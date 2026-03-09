@@ -1,3 +1,4 @@
+from reportlab.lib import styles
 import streamlit as st
 import pandas as pd
 import io
@@ -13,9 +14,10 @@ from models.tfidf_model import apply_tfidf
 from models.classification import train_classifier
 from models.skill_alignment import generate_skill_templates
 
-from reportlab.platypus import SimpleDocTemplate, Table, Paragraph
+from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, TableStyle
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 
 # -----------------------------
@@ -59,11 +61,33 @@ def create_pdf(df):
     buffer = io.BytesIO()
 
     styles = getSampleStyleSheet()
-    title = Paragraph("AI Resume Screening Results", styles['Title'])
 
-    data = [df.columns.tolist()] + df.values.tolist()
+    title = Paragraph("AI Resume Screening Results", styles["Title"])
 
-    table = Table(data)
+    # convert dataframe rows to paragraphs for wrapping
+    data = [df.columns.tolist()]
+    for row in df.values:
+        data.append([Paragraph(str(cell), styles["Normal"]) for cell in row])
+
+    # control column widths
+    col_widths = [80, 80, 60, 70, 90, 90, 90, 120, 80]
+
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+
+    table.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.grey),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
+
+            ("ALIGN", (0,0), (-1,-1), "CENTER"),
+
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+
+            ("BOTTOMPADDING", (0,0), (-1,0), 10),
+
+            ("BACKGROUND", (0,1), (-1,-1), colors.beige),
+
+            ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ]))
 
     pdf = SimpleDocTemplate(buffer, pagesize=letter)
 
@@ -277,30 +301,54 @@ if jd_input and resume_files:
 
         results.append({
 
-            "Resume": file.name,
-            "Predicted Role": predicted_role,
-            "Prediction Confidence (%)": round(prediction_confidence, 2),
-            "Required Skills": ", ".join(required_skills),
-            "Matched Skills": ", ".join(matched_skills),
-            "Missing Skills": ", ".join(missing_skills),
-            "Skill Alignment Score (%)": round(skill_score, 2),
-            "JD Similarity Score (%)": tfidf_score,
-            "Candidate Experience (Years)": candidate_experience,
-            "Final Score (%)": final_score,
-            "Decision": status,
-            "Suggestion": suggestion,
-            "Email": email,
-            "Phone": phone,
-            "Location": location
-        })
+        "Resume": file.name,
+        "Predicted Role": predicted_role,
+        "Prediction Confidence (%)": round(prediction_confidence, 2),
+        "Required Skills": ", ".join(required_skills),
+        "Matched Skills": ", ".join(matched_skills),
+        "Missing Skills": ", ".join(missing_skills),
+        "Skill Alignment Score (%)": round(skill_score, 2),
+        "JD Similarity Score (%)": tfidf_score,
+        "Candidate Experience (Years)": candidate_experience,
+        "Final Score (%)": final_score,
+        "Decision": status,
+        "Suggestion": suggestion,
+        "Email": email,
+        "Phone": phone,
+        "Location": location
+    })
 
 
     df_results = pd.DataFrame(results)
 
     st.header("📊 Resume Evaluation Results")
 
-    st.dataframe(df_results)
+# Sort candidates by score
+    df_results = df_results.sort_values(by="Final Score (%)", ascending=False)
 
+# Arrange columns in proper order
+    df_results = df_results[[
+        "Resume",
+        "Predicted Role",
+        "Final Score (%)",
+        "Decision",
+        "Candidate Experience (Years)",
+        "Skill Alignment Score (%)",
+        "JD Similarity Score (%)",
+        "Prediction Confidence (%)",
+        "Matched Skills",
+        "Missing Skills",
+        "Suggestion",
+        "Email",
+        "Phone",
+        "Location"
+    ]]
+
+# Display table
+    st.dataframe(
+    df_results,
+    use_container_width=True
+)
 
     # -----------------------------
     # DOWNLOAD EXCEL
@@ -323,8 +371,19 @@ if jd_input and resume_files:
     # -----------------------------
     # DOWNLOAD PDF
     # -----------------------------
-    pdf_file = create_pdf(df_results)
+    pdf_df = df_results[[
+    "Resume",
+    "Predicted Role",
+    "Final Score (%)",
+    "Decision",
+    "Candidate Experience (Years)",
+    "Skill Alignment Score (%)",
+    "JD Similarity Score (%)",
+    "Email",
+    "Phone"
+]]
 
+    pdf_file = create_pdf(pdf_df)
     st.download_button(
         label="📄 Download Results as PDF",
         data=pdf_file,
@@ -332,6 +391,7 @@ if jd_input and resume_files:
         mime="application/pdf"
     )
 
+    # title = Paragraph("AI Resume Screening Results Report", styles['Title'])
 
 elif jd_input and not resume_files:
 
